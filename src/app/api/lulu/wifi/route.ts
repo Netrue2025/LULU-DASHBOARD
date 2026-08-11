@@ -19,21 +19,33 @@ async function fetchFromLulu(baseUrl: string, path: string, init?: RequestInit, 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const baseUrl = cleanBaseUrl(searchParams.get("baseUrl"));
+  const action = searchParams.get("action") ?? "scan";
 
   try {
-    const response = await fetchFromLulu(baseUrl, "/wifi/scan");
+    const response = await fetchFromLulu(baseUrl, action === "status" ? "/wifi/status" : "/wifi/scan");
     const data = await response.json().catch(() => ({}));
     return NextResponse.json(data, { status: response.status });
   } catch {
-    return NextResponse.json({ detail: "LULU WiFi scan endpoint is not reachable" }, { status: 503 });
+    return NextResponse.json({ detail: "LULU WiFi endpoint is not reachable" }, { status: 503 });
   }
 }
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({}));
   const baseUrl = cleanBaseUrl(String(body.baseUrl ?? ""));
+  const action = String(body.action ?? "connect");
   const ssid = String(body.ssid ?? "").trim();
   const password = String(body.password ?? "");
+
+  if (action === "disconnect") {
+    try {
+      const response = await fetchFromLulu(baseUrl, "/wifi/disconnect", { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      return NextResponse.json(data, { status: response.status });
+    } catch {
+      return NextResponse.json({ detail: "LULU WiFi disconnect endpoint is not reachable" }, { status: 503 });
+    }
+  }
 
   if (!ssid) {
     return NextResponse.json({ detail: "WiFi SSID is required" }, { status: 400 });

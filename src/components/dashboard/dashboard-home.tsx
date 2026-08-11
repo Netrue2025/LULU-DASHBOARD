@@ -41,6 +41,13 @@ type WifiNetwork = {
   channel?: number;
 };
 
+type WifiDeviceStatus = {
+  connected: boolean;
+  ssid: string;
+  ip: string;
+  rssi: number;
+};
+
 const defaultWifiConfig: WifiConfig = {
   ssid: "",
   password: "",
@@ -180,18 +187,22 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
   const [wifiConfig, setWifiConfig] = useState<WifiConfig>(defaultWifiConfig);
   const [networks, setNetworks] = useState<WifiNetwork[]>([]);
   const [wifiStatus, setWifiStatus] = useState("");
+  const [deviceWifiStatus, setDeviceWifiStatus] = useState<WifiDeviceStatus | null>(null);
   const [scanningWifi, setScanningWifi] = useState(false);
   const [connectingWifi, setConnectingWifi] = useState("");
+  const [disconnectingWifi, setDisconnectingWifi] = useState(false);
 
   useEffect(() => {
+    let nextConfig = defaultWifiConfig;
     const stored = window.localStorage.getItem("lulu-wifi-config");
     if (stored) {
       try {
-        setWifiConfig({ ...defaultWifiConfig, ...JSON.parse(stored) });
+        nextConfig = { ...defaultWifiConfig, ...JSON.parse(stored) };
       } catch {
-        setWifiConfig(defaultWifiConfig);
+        nextConfig = defaultWifiConfig;
       }
     }
+    setWifiConfig(nextConfig);
 
     async function loadConnection() {
       setLoading(true);
@@ -204,6 +215,7 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
     }
 
     void loadConnection();
+    void loadWifiStatus(nextConfig.deviceIp);
   }, []);
 
   function updateWifiConfig(next: WifiConfig) {
@@ -211,12 +223,57 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
     window.localStorage.setItem("lulu-wifi-config", JSON.stringify(next));
   }
 
+  async function fetchDeviceWifi(path: string, init?: RequestInit) {
+    const directUrl = `http://${wifiConfig.deviceIp}${path}`;
+    try {
+      const response = await fetch(directUrl, { ...init, cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      return { response, data };
+    } catch {
+      const action = path.includes("status") ? "status" : path.includes("disconnect") ? "disconnect" : path.includes("connect") ? "connect" : "scan";
+      const proxyUrl = `/api/lulu/wifi?baseUrl=${encodeURIComponent(`http://${wifiConfig.deviceIp}`)}${action === "status" ? "&action=status" : ""}`;
+      if (action === "scan" || action === "status") {
+        const response = await fetch(proxyUrl, { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        return { response, data };
+      }
+      throw new Error("Direct LULU WiFi request is blocked. Open the dashboard locally on http://localhost:3000 or use the LULU device IP on the same WiFi.");
+    }
+  }
+
+  async function postDeviceWifi(path: string, body: Record<string, string>) {
+    try {
+      const response = await fetch(`http://${wifiConfig.deviceIp}${path}`, {
+        method: "POST",
+        body: new URLSearchParams(body)
+      });
+      const data = await response.json().catch(() => ({}));
+      return { response, data };
+    } catch {
+      const response = await fetch("/api/lulu/wifi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, baseUrl: `http://${wifiConfig.deviceIp}`, action: path.includes("disconnect") ? "disconnect" : "connect" })
+      });
+      const data = await response.json().catch(() => ({}));
+      return { response, data };
+    }
+  }
+
+  async function loadWifiStatus(deviceIp = wifiConfig.deviceIp) {
+    try {
+      const response = await fetch(`/api/lulu/wifi?baseUrl=${encodeURIComponent(`http://${deviceIp}`)}&action=status`, { cache: "no-store" });
+      if (response.ok) setDeviceWifiStatus((await response.json()) as WifiDeviceStatus);
+    } catch {
+      setDeviceWifiStatus(null);
+    }
+  }
+
   async function scanWifi() {
     setScanningWifi(true);
     setWifiStatus("");
     try {
-      const response = await fetch(`/api/lulu/wifi?baseUrl=${encodeURIComponent(`http://${wifiConfig.deviceIp}`)}`, { cache: "no-store" });
-      const data = await response.json().catch(() => ({}));
+      const { response, data } = await fetchDeviceWifi("/wifi/scan");
       if (!response.ok) throw new Error(data.detail ?? "WiFi scan failed");
       setNetworks(Array.isArray(data.networks) ? data.networks : []);
       setWifiStatus((data.networks?.length ?? 0) > 0 ? "Tap a network to connect." : "No WiFi networks found.");
@@ -238,22 +295,28 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
     setConnectingWifi(network.ssid);
     setWifiStatus("");
     try {
-      const response = await fetch("/api/lulu/wifi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          baseUrl: `http://${nextConfig.deviceIp}`,
-          ssid: network.ssid,
-          password: nextConfig.password
-        })
-      });
-      const data = await response.json().catch(() => ({}));
+      const { response, data } = await postDeviceWifi("/wifi/connect", { ssid: network.ssid, password: nextConfig.password });
       if (!response.ok) throw new Error(data.detail ?? "WiFi connect failed");
       setWifiStatus(`LULU is connecting to ${network.ssid}. The IP may change after reconnect.`);
     } catch (error) {
       setWifiStatus(error instanceof Error ? error.message : "WiFi connect failed");
     } finally {
       setConnectingWifi("");
+    }
+  }
+
+  async function disconnectWifi() {
+    setDisconnectingWifi(true);
+    setWifiStatus("");
+    try {
+      const { response, data } = await postDeviceWifi("/wifi/disconnect", {});
+      if (!response.ok) throw new Error(data.detail ?? "WiFi disconnect failed");
+      setDeviceWifiStatus(null);
+      setWifiStatus("LULU is disconnecting from WiFi.");
+    } catch (error) {
+      setWifiStatus(error instanceof Error ? error.message : "WiFi disconnect failed");
+    } finally {
+      setDisconnectingWifi(false);
     }
   }
 
@@ -302,11 +365,18 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
                 <Search className="h-4 w-4" />
               </Button>
             </div>
+            <div className="mb-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs">
+              <p className="font-medium">{deviceWifiStatus?.connected ? `Connected to ${deviceWifiStatus.ssid}` : "LULU WiFi status unavailable"}</p>
+              <p className="mt-1 text-muted-foreground">{deviceWifiStatus?.connected ? `${deviceWifiStatus.ip} | ${deviceWifiStatus.rssi} dBm` : "Scan requires LULU to be reachable at the device IP."}</p>
+            </div>
             <div className="grid gap-3">
               <ConfigField label="WiFi SSID" value={wifiConfig.ssid} placeholder="Your router name" onChange={(ssid) => updateWifiConfig({ ...wifiConfig, ssid })} />
               <ConfigField label="WiFi password" value={wifiConfig.password} placeholder="Saved locally in this browser" type="password" onChange={(password) => updateWifiConfig({ ...wifiConfig, password })} />
               <ConfigField label="LULU device IP" value={wifiConfig.deviceIp} placeholder="192.168.1.100" onChange={(deviceIp) => updateWifiConfig({ ...wifiConfig, deviceIp })} />
             </div>
+            <Button variant="destructive" className="mt-3 w-full" disabled={disconnectingWifi} onClick={disconnectWifi}>
+              {disconnectingWifi ? "Disconnecting" : "Disconnect LULU from WiFi"}
+            </Button>
             {wifiStatus ? <p className="mt-3 text-xs leading-5 text-cyan-100">{wifiStatus}</p> : null}
             {networks.length > 0 ? (
               <div className="mt-3 max-h-48 space-y-2 overflow-y-auto thin-scrollbar">
