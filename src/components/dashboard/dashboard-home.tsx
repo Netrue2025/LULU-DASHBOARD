@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Clock, Mic, PlugZap, RadioTower, Sparkles, Square, Wifi, X } from "lucide-react";
+import { Activity, Clock, Lock, Mic, PlugZap, RadioTower, Search, Sparkles, Square, Wifi, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
@@ -32,6 +32,13 @@ type WifiConfig = {
   ssid: string;
   password: string;
   deviceIp: string;
+};
+
+type WifiNetwork = {
+  ssid: string;
+  rssi: number;
+  secure: boolean;
+  channel?: number;
 };
 
 const defaultWifiConfig: WifiConfig = {
@@ -171,6 +178,10 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
   const [connection, setConnection] = useState<ConnectionState | null>(null);
   const [loading, setLoading] = useState(true);
   const [wifiConfig, setWifiConfig] = useState<WifiConfig>(defaultWifiConfig);
+  const [networks, setNetworks] = useState<WifiNetwork[]>([]);
+  const [wifiStatus, setWifiStatus] = useState("");
+  const [scanningWifi, setScanningWifi] = useState(false);
+  const [connectingWifi, setConnectingWifi] = useState("");
 
   useEffect(() => {
     const stored = window.localStorage.getItem("lulu-wifi-config");
@@ -198,6 +209,52 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
   function updateWifiConfig(next: WifiConfig) {
     setWifiConfig(next);
     window.localStorage.setItem("lulu-wifi-config", JSON.stringify(next));
+  }
+
+  async function scanWifi() {
+    setScanningWifi(true);
+    setWifiStatus("");
+    try {
+      const response = await fetch(`/api/lulu/wifi?baseUrl=${encodeURIComponent(`http://${wifiConfig.deviceIp}`)}`, { cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail ?? "WiFi scan failed");
+      setNetworks(Array.isArray(data.networks) ? data.networks : []);
+      setWifiStatus((data.networks?.length ?? 0) > 0 ? "Tap a network to connect." : "No WiFi networks found.");
+    } catch (error) {
+      setWifiStatus(error instanceof Error ? error.message : "WiFi scan failed");
+    } finally {
+      setScanningWifi(false);
+    }
+  }
+
+  async function connectWifi(network: WifiNetwork) {
+    const nextConfig = { ...wifiConfig, ssid: network.ssid };
+    updateWifiConfig(nextConfig);
+    if (network.secure && !nextConfig.password) {
+      setWifiStatus("Enter the WiFi password, then tap the network again.");
+      return;
+    }
+
+    setConnectingWifi(network.ssid);
+    setWifiStatus("");
+    try {
+      const response = await fetch("/api/lulu/wifi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          baseUrl: `http://${nextConfig.deviceIp}`,
+          ssid: network.ssid,
+          password: nextConfig.password
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.detail ?? "WiFi connect failed");
+      setWifiStatus(`LULU is connecting to ${network.ssid}. The IP may change after reconnect.`);
+    } catch (error) {
+      setWifiStatus(error instanceof Error ? error.message : "WiFi connect failed");
+    } finally {
+      setConnectingWifi("");
+    }
   }
 
   const connected = connection?.connected ?? false;
@@ -236,16 +293,47 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="rounded-lg border border-white/10 p-3">
-            <div className="mb-3 flex items-center gap-2">
-              <Wifi className="h-4 w-4 text-cyan-200" />
-              <p className="text-xs font-semibold uppercase text-muted-foreground">WiFi configuration</p>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Wifi className="h-4 w-4 text-cyan-200" />
+                <p className="text-xs font-semibold uppercase text-muted-foreground">WiFi configuration</p>
+              </div>
+              <Button variant="secondary" className="h-9 w-9 px-0" disabled={scanningWifi} onClick={scanWifi} title="Search WiFi networks">
+                <Search className="h-4 w-4" />
+              </Button>
             </div>
             <div className="grid gap-3">
               <ConfigField label="WiFi SSID" value={wifiConfig.ssid} placeholder="Your router name" onChange={(ssid) => updateWifiConfig({ ...wifiConfig, ssid })} />
               <ConfigField label="WiFi password" value={wifiConfig.password} placeholder="Saved locally in this browser" type="password" onChange={(password) => updateWifiConfig({ ...wifiConfig, password })} />
               <ConfigField label="LULU device IP" value={wifiConfig.deviceIp} placeholder="192.168.1.100" onChange={(deviceIp) => updateWifiConfig({ ...wifiConfig, deviceIp })} />
             </div>
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">These fields keep the dashboard tidy and local. To change the ESP32 WiFi, update the firmware secrets and flash LULU again.</p>
+            {wifiStatus ? <p className="mt-3 text-xs leading-5 text-cyan-100">{wifiStatus}</p> : null}
+            {networks.length > 0 ? (
+              <div className="mt-3 max-h-48 space-y-2 overflow-y-auto thin-scrollbar">
+                {networks.map((network) => (
+                  <button
+                    key={`${network.ssid}-${network.channel ?? ""}`}
+                    className="flex w-full items-center justify-between gap-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-left transition hover:bg-white/10"
+                    disabled={connectingWifi.length > 0}
+                    onClick={() => connectWifi(network)}
+                    type="button"
+                  >
+                    <span className="min-w-0">
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Wifi className="h-4 w-4 text-cyan-200" />
+                        <span className="truncate">{network.ssid || "Hidden network"}</span>
+                        {network.secure ? <Lock className="h-3.5 w-3.5 text-yellow-200" /> : null}
+                      </span>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {network.rssi} dBm{network.channel ? ` | channel ${network.channel}` : ""}
+                      </span>
+                    </span>
+                    <span className="text-xs text-pink-100">{connectingWifi === network.ssid ? "Connecting" : "Connect"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">Search talks to LULU at the device IP above. Click a network to send it to the ESP32.</p>
           </div>
         </div>
       </div>
