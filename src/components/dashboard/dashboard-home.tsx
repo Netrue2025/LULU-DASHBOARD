@@ -1,37 +1,50 @@
 "use client";
 
-import {
-  Activity,
-  ChevronDown,
-  Clock,
-  Cpu,
-  Gauge,
-  HardDrive,
-  Mic,
-  RadioTower,
-  Server,
-  Sparkles,
-  Square
-} from "lucide-react";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { useMemo, useState } from "react";
+import { Activity, Clock, Mic, PlugZap, RadioTower, Sparkles, Square, Wifi, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { HealthIcon, PageGrid, SectionCard, StatCard, StatusBadge } from "@/components/dashboard/shared";
-import { Badge } from "@/components/ui/badge";
+import { HealthIcon, PageGrid, StatusBadge } from "@/components/dashboard/shared";
 import { Button } from "@/components/ui/button";
-import { analyticsRows, initialAlerts } from "@/lib/mock-data";
-import { formatBytes, formatUptime, nowTime } from "@/lib/utils";
+import { initialAlerts } from "@/lib/mock-data";
+import { nowTime } from "@/lib/utils";
 import { useLuluRealtime } from "@/hooks/use-lulu-realtime";
 import { cn } from "@/lib/utils";
 
 const keyActivityPattern = /radio|music|song|bible|scripture|reading|story|playing|listen|speaking|recording|weather|volume|stop/i;
 
+type ConnectionState = {
+  connected: boolean;
+  backend: {
+    online: boolean;
+    status: number;
+    baseUrl: string;
+    health: Record<string, string> | null;
+  };
+  remote: {
+    pending?: Record<string, string> | null;
+    last_command?: Record<string, string> | null;
+  } | null;
+  checked_at: string;
+};
+
+type WifiConfig = {
+  ssid: string;
+  password: string;
+  deviceIp: string;
+};
+
+const defaultWifiConfig: WifiConfig = {
+  ssid: "",
+  password: "",
+  deviceIp: "192.168.1.100"
+};
+
 export function DashboardHome() {
-  const { health, overview, events, status, lastError } = useLuluRealtime();
+  const { health, overview, events, status } = useLuluRealtime();
   const [remoteStatus, setRemoteStatus] = useState("");
   const [sendingRemote, setSendingRemote] = useState(false);
-  const [showMore, setShowMore] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const unreadAlerts = initialAlerts.filter((alert) => alert.unread).length + (status === "offline" || status === "error" ? 1 : 0);
 
   const userPhrase = overview?.conversation.user?.text ?? "Waiting for Jeremiah...";
@@ -66,9 +79,9 @@ export function DashboardHome() {
   }
 
   return (
-    <DashboardShell title="Overview" subtitle="LULU live room" unreadAlerts={unreadAlerts}>
+    <DashboardShell title="Overview" subtitle="LULU live room" unreadAlerts={unreadAlerts} minimal>
       <PageGrid>
-        <section className="lulu-baby-panel overflow-hidden rounded-lg border border-white/10">
+        <section className="lulu-baby-panel mx-auto w-full max-w-5xl overflow-hidden rounded-lg border border-white/10">
           <div className="lulu-rainbow-bar" />
           <div className="grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
             <div className="min-w-0 rounded-lg border border-white/10 bg-black/70 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)] sm:p-4">
@@ -82,7 +95,21 @@ export function DashboardHome() {
                     <p className="truncate text-xs text-cyan-100/80">{overview?.checked_at ? `Updated ${new Date(overview.checked_at).toLocaleTimeString()}` : "Waiting for live feed"}</p>
                   </div>
                 </div>
-                <StatusBadge status={status} />
+                <div className="flex items-center gap-2">
+                  <button
+                    className={cn(
+                      "relative flex h-9 w-9 items-center justify-center rounded-md border transition",
+                      status === "online" ? "border-green-300/50 bg-green-300/20 text-green-100" : "border-red-300/50 bg-red-400/20 text-red-100"
+                    )}
+                    onClick={() => setConnectionOpen(true)}
+                    title="LULU connection"
+                    type="button"
+                  >
+                    <Wifi className="h-4 w-4" />
+                    <span className={cn("absolute right-1 top-1 h-2 w-2 rounded-full", status === "online" ? "bg-green-300" : "bg-red-300")} />
+                  </button>
+                  <StatusBadge status={status} />
+                </div>
               </div>
 
               <div className="space-y-2 font-mono">
@@ -127,74 +154,117 @@ export function DashboardHome() {
               </div>
 
               <div className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-                <MiniStatus label="Backend" value={status} tone={status === "online" ? "green" : "red"} icon={<HealthIcon status={status} />} />
+                <MiniStatus label="Connection" value={status} tone={status === "online" ? "green" : "red"} icon={<HealthIcon status={status} />} />
                 <MiniStatus label="Last check" value={health ? new Date(health.checked_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : nowTime()} tone="yellow" icon={<Clock className="h-4 w-4" />} />
               </div>
             </aside>
           </div>
         </section>
+      </PageGrid>
 
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-card/70 px-3 py-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">Overview is showing only live essentials.</p>
-            <p className="truncate text-xs text-muted-foreground">More admin containers are tucked away.</p>
+      {connectionOpen ? <ConnectionModal onClose={() => setConnectionOpen(false)} /> : null}
+    </DashboardShell>
+  );
+}
+
+function ConnectionModal({ onClose }: { onClose: () => void }) {
+  const [connection, setConnection] = useState<ConnectionState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [wifiConfig, setWifiConfig] = useState<WifiConfig>(defaultWifiConfig);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("lulu-wifi-config");
+    if (stored) {
+      try {
+        setWifiConfig({ ...defaultWifiConfig, ...JSON.parse(stored) });
+      } catch {
+        setWifiConfig(defaultWifiConfig);
+      }
+    }
+
+    async function loadConnection() {
+      setLoading(true);
+      try {
+        const response = await fetch("/api/lulu/connection", { cache: "no-store" });
+        if (response.ok) setConnection((await response.json()) as ConnectionState);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void loadConnection();
+  }, []);
+
+  function updateWifiConfig(next: WifiConfig) {
+    setWifiConfig(next);
+    window.localStorage.setItem("lulu-wifi-config", JSON.stringify(next));
+  }
+
+  const connected = connection?.connected ?? false;
+  const lastCommand = connection?.remote?.last_command;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-3 backdrop-blur sm:items-center" role="dialog" aria-modal="true">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-white/10 bg-card shadow-[0_24px_80px_rgb(0_0_0/0.45)]">
+        <div className="lulu-rainbow-bar" />
+        <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span className={cn("flex h-9 w-9 items-center justify-center rounded-md", connected ? "bg-green-300 text-slate-950" : "bg-red-400 text-white")}>
+              <PlugZap className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-semibold">LULU connection</h2>
+              <p className="text-xs text-muted-foreground">{loading ? "Checking now" : connected ? "Connected" : "Not connected"}</p>
+            </div>
           </div>
-          <Button variant="secondary" className="h-9 w-9 shrink-0 px-0" onClick={() => setShowMore(!showMore)} title={showMore ? "Hide more" : "See more"}>
-            <ChevronDown className={cn("h-4 w-4 transition-transform", showMore ? "rotate-180" : "")} />
+          <Button variant="ghost" className="h-9 w-9 px-0" onClick={onClose} title="Close connection modal">
+            <X className="h-4 w-4" />
           </Button>
         </div>
 
-        {showMore ? (
-          <div className="grid gap-4">
-            <SectionCard title="Quick Health">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <StatCard label="Status" value={status} detail={lastError || `Source ${health?.source ?? "waiting"}`} icon={<HealthIcon status={status} />} tone={status === "online" ? "good" : status === "offline" ? "bad" : "warn"} />
-                <StatCard label="Uptime" value={formatUptime(health?.metrics.dashboard_uptime_seconds ?? 0)} detail="Dashboard service" icon={<Clock className="h-4 w-4" />} />
-                <StatCard label="Connections" value={`${health?.metrics.active_connections ?? 0}`} detail="Backend proxy" icon={<Server className="h-4 w-4" />} />
-                <StatCard label="Key Events" value={`${keyActivities.length}`} detail="Terminal actions" icon={<Activity className="h-4 w-4" />} tone="info" />
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Performance" action={<Badge tone="info">Hidden</Badge>}>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <StatCard label="CPU" value={`${health?.metrics.cpu_percent ?? 0}%`} detail="Dashboard host" icon={<Cpu className="h-4 w-4" />} tone={(health?.metrics.cpu_percent ?? 0) > 80 ? "warn" : "neutral"} />
-                <StatCard label="RAM" value={`${health?.metrics.ram_percent ?? 0}%`} detail={formatBytes(health?.metrics.ram_used ?? 0)} icon={<Gauge className="h-4 w-4" />} tone={(health?.metrics.ram_percent ?? 0) > 80 ? "warn" : "neutral"} />
-                <StatCard label="Disk" value={`${health?.metrics.disk_percent ?? 0}%`} detail={formatBytes(health?.metrics.disk_used ?? 0)} icon={<HardDrive className="h-4 w-4" />} />
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Request Trend">
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={analyticsRows}>
-                    <defs>
-                      <linearGradient id="requestsFillHidden" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.5} />
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="hour" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                    <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }} />
-                    <Area type="monotone" dataKey="requests" stroke="hsl(var(--primary))" fill="url(#requestsFillHidden)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Services">
-              <div className="space-y-3">
-                <SnapshotRow label="Whisper" value={health?.lulu?.whisper_model ?? "base"} status={status === "online" ? "online" : "offline"} />
-                <SnapshotRow label="Piper" value={health?.lulu?.piper_voice?.split(/[\\/]/).pop() ?? "voice model"} status={status === "online" ? "online" : "offline"} />
-                <SnapshotRow label="OpenAI" value={health?.lulu?.openai_model ?? "optional"} status={health?.lulu?.openai_enabled === "true" ? "online" : "offline"} />
-                <SnapshotRow label="Radio" value={health?.lulu?.radio_stream_format ?? "PCM stream"} status={status === "online" ? "online" : "offline"} />
-              </div>
-            </SectionCard>
+        <div className="space-y-4 p-4">
+          <div className={cn("rounded-lg border p-3", connected ? "border-green-300/30 bg-green-300/10" : "border-red-300/30 bg-red-400/10")}>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Status</p>
+            <p className="mt-1 text-lg font-semibold">{connected ? "LULU backend is reachable" : "LULU backend is offline"}</p>
+            <p className="mt-1 break-words text-xs text-muted-foreground">{connection?.backend.baseUrl ?? "Waiting for backend URL"}</p>
           </div>
-        ) : null}
-      </PageGrid>
-    </DashboardShell>
+
+          <div className="rounded-lg border border-white/10 p-3">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">Device activity</p>
+            <p className="mt-2 text-sm">{lastCommand ? `${lastCommand.action ?? "Command"} ${lastCommand.state ?? ""}`.trim() : "No recent remote command activity yet."}</p>
+            {lastCommand?.device_id ? <p className="mt-1 text-xs text-muted-foreground">Device: {lastCommand.device_id}</p> : null}
+          </div>
+
+          <div className="rounded-lg border border-white/10 p-3">
+            <div className="mb-3 flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-cyan-200" />
+              <p className="text-xs font-semibold uppercase text-muted-foreground">WiFi configuration</p>
+            </div>
+            <div className="grid gap-3">
+              <ConfigField label="WiFi SSID" value={wifiConfig.ssid} placeholder="Your router name" onChange={(ssid) => updateWifiConfig({ ...wifiConfig, ssid })} />
+              <ConfigField label="WiFi password" value={wifiConfig.password} placeholder="Saved locally in this browser" type="password" onChange={(password) => updateWifiConfig({ ...wifiConfig, password })} />
+              <ConfigField label="LULU device IP" value={wifiConfig.deviceIp} placeholder="192.168.1.100" onChange={(deviceIp) => updateWifiConfig({ ...wifiConfig, deviceIp })} />
+            </div>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">These fields keep the dashboard tidy and local. To change the ESP32 WiFi, update the firmware secrets and flash LULU again.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfigField({ label, value, placeholder, type = "text", onChange }: { label: string; value: string; placeholder: string; type?: string; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <input
+        className="h-10 rounded-md border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+        placeholder={placeholder}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 
@@ -215,18 +285,6 @@ function MiniStatus({ label, value, icon, tone }: { label: string; value: string
         <p className="text-xs font-semibold uppercase">{label}</p>
       </div>
       <p className="mt-2 truncate text-sm text-white/90">{value}</p>
-    </div>
-  );
-}
-
-function SnapshotRow({ label, value, status }: { label: string; value: string; status: "online" | "offline" }) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-3">
-      <div className="min-w-0">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="truncate text-xs text-muted-foreground">{value}</p>
-      </div>
-      <StatusBadge status={status} />
     </div>
   );
 }

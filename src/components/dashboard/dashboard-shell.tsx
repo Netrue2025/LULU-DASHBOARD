@@ -52,12 +52,14 @@ export function DashboardShell({
   children,
   title,
   subtitle,
-  unreadAlerts = 0
+  unreadAlerts = 0,
+  minimal = false
 }: {
   children: ReactNode;
   title: string;
   subtitle?: string;
   unreadAlerts?: number;
+  minimal?: boolean;
 }) {
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState("Admin");
@@ -100,12 +102,14 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card/92 backdrop-blur xl:block">
-        <SidebarContent role={role} unreadAlerts={unreadAlerts} onLogout={logout} />
-      </aside>
+      {!minimal ? (
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 border-r bg-card/92 backdrop-blur xl:block">
+          <SidebarContent role={role} unreadAlerts={unreadAlerts} onLogout={logout} />
+        </aside>
+      ) : null}
 
       <AnimatePresence>
-        {mobileNav ? (
+        {!minimal && mobileNav ? (
           <motion.div
             className="fixed inset-0 z-50 bg-background/80 backdrop-blur xl:hidden"
             initial={{ opacity: 0 }}
@@ -129,20 +133,24 @@ export function DashboardShell({
         ) : null}
       </AnimatePresence>
 
-      <main className="xl:pl-72">
+      <main className={cn(!minimal && "xl:pl-72")}>
         <header className="sticky top-0 z-30 border-b bg-background/88 backdrop-blur">
           <div className="flex min-h-16 items-center gap-2 px-3 py-2 sm:gap-3 sm:px-6">
-            <Button variant="ghost" className="h-9 w-9 px-0 xl:hidden" onClick={() => setMobileNav(true)} title="Open menu">
-              <Menu className="h-4 w-4" />
-            </Button>
+            {!minimal ? (
+              <Button variant="ghost" className="h-9 w-9 px-0 xl:hidden" onClick={() => setMobileNav(true)} title="Open menu">
+                <Menu className="h-4 w-4" />
+              </Button>
+            ) : null}
             <div className="min-w-0 flex-1">
               <h1 className="truncate text-lg font-semibold sm:text-xl">{title}</h1>
               {subtitle ? <p className="truncate text-xs text-muted-foreground sm:text-sm">{subtitle}</p> : null}
             </div>
-            <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => setPaletteOpen(true)}>
-              <Search className="h-4 w-4" />
-              Command
-            </Button>
+            {!minimal ? (
+              <Button variant="secondary" className="hidden sm:inline-flex" onClick={() => setPaletteOpen(true)}>
+                <Search className="h-4 w-4" />
+                Command
+              </Button>
+            ) : null}
             <Button variant="ghost" className="h-9 w-9 px-0" onClick={toggleTheme} title="Toggle theme">
               {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -154,7 +162,7 @@ export function DashboardShell({
         </div>
       </main>
 
-      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
+      {!minimal ? <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} /> : null}
     </div>
   );
 }
