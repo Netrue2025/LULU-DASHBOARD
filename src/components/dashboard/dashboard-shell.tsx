@@ -4,24 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity,
-  Bell,
   BookOpen,
-  Brain,
-  CalendarClock,
   Cpu,
-  Database,
-  Gauge,
-  HardDrive,
   Home,
-  Laptop,
-  Languages,
   LogOut,
   Menu,
-  Mic,
   Moon,
+  Music,
   Search,
-  Settings,
   Shield,
   Sun,
   X
@@ -34,18 +24,8 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Overview", icon: Home },
-  { href: "/activity", label: "Activity", icon: Activity },
-  { href: "/conversations", label: "Conversations", icon: BookOpen },
-  { href: "/reminders", label: "Reminders", icon: CalendarClock },
-  { href: "/memory", label: "Memory", icon: Brain },
-  { href: "/knowledge", label: "Knowledge", icon: Database },
-  { href: "/storage", label: "Storage", icon: HardDrive },
-  { href: "/portuguese", label: "Portuguese", icon: Languages },
-  { href: "/speech", label: "Speech", icon: Mic },
-  { href: "/analytics", label: "Analytics", icon: Gauge },
-  { href: "/devices", label: "Devices", icon: Laptop },
-  { href: "/settings", label: "Settings", icon: Settings },
-  { href: "/alerts", label: "Alerts", icon: Bell }
+  { href: "/spiritual", label: "Spiritual", icon: BookOpen },
+  { href: "/music", label: "Music", icon: Music }
 ];
 
 export function DashboardShell({

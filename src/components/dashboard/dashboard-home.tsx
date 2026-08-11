@@ -24,6 +24,14 @@ type ConnectionState = {
   remote: {
     pending?: Record<string, string> | null;
     last_command?: Record<string, string> | null;
+    device_status?: {
+      wifi_connected?: boolean;
+      wifi_ssid?: string;
+      wifi_ip?: string;
+      wifi_rssi?: number;
+      updated_at?: string;
+      state?: string;
+    } | null;
   } | null;
   checked_at: string;
 };
@@ -93,7 +101,7 @@ export function DashboardHome() {
   }
 
   return (
-    <DashboardShell title="Overview" subtitle="LULU live room" unreadAlerts={unreadAlerts} minimal>
+    <DashboardShell title="Overview" subtitle="LULU live room" unreadAlerts={unreadAlerts}>
       <PageGrid>
         <section className="lulu-baby-panel mx-auto w-full max-w-5xl overflow-hidden rounded-lg border border-white/10">
           <div className="lulu-rainbow-bar" />
@@ -209,7 +217,19 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
       setLoading(true);
       try {
         const response = await fetch("/api/lulu/connection", { cache: "no-store" });
-        if (response.ok) setConnection((await response.json()) as ConnectionState);
+        if (response.ok) {
+          const nextConnection = (await response.json()) as ConnectionState;
+          setConnection(nextConnection);
+          const remoteDevice = nextConnection.remote?.device_status;
+          if (remoteDevice?.wifi_connected) {
+            setDeviceWifiStatus({
+              connected: true,
+              ssid: remoteDevice.wifi_ssid ?? "",
+              ip: remoteDevice.wifi_ip ?? "",
+              rssi: Number(remoteDevice.wifi_rssi ?? 0)
+            });
+          }
+        }
       } finally {
         setLoading(false);
       }
@@ -217,6 +237,8 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
 
     void loadConnection();
     void loadWifiStatus(nextConfig.deviceIp);
+    const connectionTimer = window.setInterval(loadConnection, 5000);
+    return () => window.clearInterval(connectionTimer);
   }, []);
 
   function updateWifiConfig(next: WifiConfig) {
@@ -321,6 +343,7 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
 
   const connected = connection?.connected ?? false;
   const lastCommand = connection?.remote?.last_command;
+  const remoteDevice = connection?.remote?.device_status;
   const setupUrl = `http://${wifiConfig.deviceIp || defaultWifiConfig.deviceIp}`;
   const selectedIsCurrent = Boolean(selectedNetwork?.ssid && deviceWifiStatus?.connected && selectedNetwork.ssid === deviceWifiStatus.ssid);
 
@@ -367,8 +390,9 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
               </Button>
             </div>
             <div className="mb-3 rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs">
-              <p className="font-medium">{deviceWifiStatus?.connected ? `LULU ESP32 is connected to ${deviceWifiStatus.ssid}` : "LULU ESP32 WiFi status unavailable"}</p>
-              <p className="mt-1 text-muted-foreground">{deviceWifiStatus?.connected ? `IP ${deviceWifiStatus.ip} | signal ${deviceWifiStatus.rssi} dBm` : "Search requires your browser to reach LULU at the device IP."}</p>
+              <p className="font-medium">{deviceWifiStatus?.connected ? `LULU ESP32 is connected to ${deviceWifiStatus.ssid || "WiFi"}` : "LULU ESP32 WiFi status unavailable"}</p>
+              <p className="mt-1 text-muted-foreground">{deviceWifiStatus?.connected ? `IP ${deviceWifiStatus.ip || "unknown"} | signal ${deviceWifiStatus.rssi} dBm` : "Search requires your browser to reach LULU at the device IP."}</p>
+              {remoteDevice?.updated_at ? <p className="mt-1 text-muted-foreground">Railway heartbeat: {new Date(remoteDevice.updated_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p> : null}
             </div>
             <div className="grid gap-3">
               <ConfigField label="WiFi SSID" value={wifiConfig.ssid} placeholder="Your router name" onChange={(ssid) => updateWifiConfig({ ...wifiConfig, ssid })} />
