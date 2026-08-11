@@ -51,6 +51,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ detail: "WiFi SSID is required" }, { status: 400 });
   }
 
+  if (process.env.ALLOW_SERVER_WIFI_CONNECT !== "1") {
+    return NextResponse.json(
+      { detail: "WiFi passwords must be sent directly to LULU on the local network, not through Railway." },
+      { status: 403 }
+    );
+  }
+
   try {
     const response = await fetchFromLulu(baseUrl, "/wifi/connect", {
       method: "POST",
