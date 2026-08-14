@@ -109,7 +109,7 @@ export function SdMediaManager({ title, subtitle, rootPath, accept, emptyText, i
 
   function sdQueryParams(path = currentPath) {
     const params = new URLSearchParams({ mode, action: "list", path });
-    if (mode === "local") params.set("baseUrl", directStorageUrl());
+    params.set("baseUrl", directStorageUrl());
     return params;
   }
 

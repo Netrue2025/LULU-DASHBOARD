@@ -104,6 +104,31 @@ async function fetchFromCloudSd(path: string, init?: RequestInit, timeoutMs = 30
   }
 }
 
+async function localBibleStatusResponse(baseUrl: string) {
+  const response = await fetchFromSd(baseUrl, "/bible/status");
+  const data = await response.json().catch(() => ({}));
+  return NextResponse.json({ ...data, source: baseUrl }, { status: response.status });
+}
+
+async function localListResponse(baseUrl: string, path: string) {
+  const listResponse = await fetchFromSd(baseUrl, `/list?dir=${encodeURIComponent(path)}`);
+  if (listResponse.ok) {
+    const data = await listResponse.json();
+    return NextResponse.json({
+      path: String(data.path ?? path).replace(/^\//, ""),
+      items: data.items ?? [],
+      sdcard_active: true,
+      source: baseUrl
+    });
+  }
+
+  const htmlResponse = await fetchFromSd(baseUrl, `/?dir=${encodeURIComponent(path)}`);
+  if (!htmlResponse.ok) {
+    return NextResponse.json({ detail: "LULU SD card is not reachable" }, { status: htmlResponse.status });
+  }
+  return NextResponse.json({ ...parseStorageHtml(await htmlResponse.text(), path), source: baseUrl });
+}
+
 function isMusicPath(value: string) {
   return cleanPath(value).toLowerCase() === "/music";
 }
@@ -184,6 +209,7 @@ async function convertMusicUploadToWav(file: File) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const action = searchParams.get("action") ?? "list";
+  const hasBaseUrl = searchParams.has("baseUrl");
   const baseUrl = cleanBaseUrl(searchParams.get("baseUrl"));
   const path = cleanPath(searchParams.get("path"));
   const mode = searchParams.get("mode") ?? "";
@@ -205,6 +231,13 @@ export async function GET(request: Request) {
           body: JSON.stringify({ action: "bible_status", timeout_seconds: 18 })
         }, 30000);
         const data = await response.json().catch(() => ({}));
+        if ((response.status === 202 || data?.queued || !response.ok) && hasBaseUrl) {
+          try {
+            return await localBibleStatusResponse(baseUrl);
+          } catch {
+            return NextResponse.json(data.data ?? data, { status: response.status });
+          }
+        }
         return NextResponse.json(data.data ?? data, { status: response.status });
       }
 
@@ -215,6 +248,13 @@ export async function GET(request: Request) {
           body: JSON.stringify({ action: "list", path, timeout_seconds: 18 })
         }, 30000);
         const data = await response.json().catch(() => ({}));
+        if ((response.status === 202 || data?.queued || !response.ok) && hasBaseUrl) {
+          try {
+            return await localListResponse(baseUrl, path);
+          } catch {
+            return NextResponse.json(data.data ?? data, { status: response.status });
+          }
+        }
         return NextResponse.json(data.data ?? data, { status: response.status });
       }
 
@@ -222,9 +262,7 @@ export async function GET(request: Request) {
     }
 
     if (action === "bible_status") {
-      const response = await fetchFromSd(baseUrl, "/bible/status");
-      const data = await response.json().catch(() => ({}));
-      return NextResponse.json(data, { status: response.status });
+      return await localBibleStatusResponse(baseUrl);
     }
 
     if (action === "download") {
@@ -233,25 +271,19 @@ export async function GET(request: Request) {
       return new Response(response.body, { status: response.status, headers });
     }
 
-    const listResponse = await fetchFromSd(baseUrl, `/list?dir=${encodeURIComponent(path)}`);
-    if (listResponse.ok) {
-      const data = await listResponse.json();
-      return NextResponse.json({
-        path: String(data.path ?? path).replace(/^\//, ""),
-        items: data.items ?? [],
-        sdcard_active: true,
-        source: baseUrl
-      });
+    return await localListResponse(baseUrl, path);
+  } catch {
+    if (mode === "cloud" && hasBaseUrl) {
+      try {
+        if (action === "bible_status") return await localBibleStatusResponse(baseUrl);
+        if (action === "list") return await localListResponse(baseUrl, path);
+      } catch {
+        // Fall through to the user-facing cloud error below.
+      }
     }
 
-    const htmlResponse = await fetchFromSd(baseUrl, `/?dir=${encodeURIComponent(path)}`);
-    if (!htmlResponse.ok) {
-      return NextResponse.json({ detail: "LULU SD card is not reachable" }, { status: htmlResponse.status });
-    }
-    return NextResponse.json({ ...parseStorageHtml(await htmlResponse.text(), path), source: baseUrl });
-  } catch {
     return NextResponse.json(
-      { detail: mode === "cloud" ? "LULU cloud backend is not reachable from the dashboard server. The local SD IP is only used in Local mode." : "LULU SD card is not reachable" },
+      { detail: mode === "cloud" ? "LULU cloud backend is not reachable, and the local SD card fallback is not reachable from this dashboard server." : "LULU SD card is not reachable" },
       { status: 503 }
     );
   }

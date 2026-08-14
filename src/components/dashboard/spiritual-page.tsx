@@ -249,7 +249,7 @@ export function SpiritualPage() {
 
   function sdQueryParams() {
     const params = new URLSearchParams({ mode: sdMode });
-    if (sdMode === "local") params.set("baseUrl", directStorageUrl());
+    params.set("baseUrl", directStorageUrl());
     return params;
   }
 
@@ -279,7 +279,7 @@ export function SpiritualPage() {
       const baseUrl = directStorageUrl();
       const params = sdQueryParams();
       params.set("action", "bible_status");
-      if (sdMode === "local") params.set("baseUrl", baseUrl);
+      params.set("baseUrl", baseUrl);
       const response = await fetch(`/api/lulu/sd?${params.toString()}`, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (response.status === 202 || data?.queued) {
