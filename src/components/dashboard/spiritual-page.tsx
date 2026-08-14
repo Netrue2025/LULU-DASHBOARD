@@ -253,6 +253,24 @@ export function SpiritualPage() {
     return params;
   }
 
+  async function loadDirectBibleStatus() {
+    const response = await fetch(`${directStorageUrl()}/bible/status`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail ?? "Local LULU Bible status is not reachable from this browser");
+    return data as BibleOfflineStatus;
+  }
+
+  async function loadDirectBibleItems(path: string) {
+    const localPath = `/${cleanRelativePath(path)}`;
+    const response = await fetch(`${directStorageUrl()}/list?dir=${encodeURIComponent(localPath)}`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail ?? `Local LULU SD folder /${path} is not reachable from this browser`);
+    return {
+      path: String(data.path ?? path).replace(/^\//, ""),
+      items: Array.isArray(data.items) ? data.items as BibleSdItem[] : []
+    };
+  }
+
   async function sendRemoteCommand(action: "listen" | "stop") {
     setSending(true);
     setRemoteStatus("");
@@ -283,10 +301,19 @@ export function SpiritualPage() {
       const response = await fetch(`/api/lulu/sd?${params.toString()}`, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (response.status === 202 || data?.queued) {
-        setOfflineMessage(data.detail ?? "LULU is still syncing SD status.");
+        try {
+          setOfflineStatus(await loadDirectBibleStatus());
+          setOfflineMessage("Offline Bible status loaded from local SD.");
+        } catch {
+          setOfflineMessage(data.detail ?? "LULU is still syncing SD status.");
+        }
         return;
       }
-      if (!response.ok) throw new Error(data.detail ?? "Offline Bible status unavailable");
+      if (!response.ok) {
+        setOfflineStatus(await loadDirectBibleStatus());
+        setOfflineMessage("Offline Bible status loaded from local SD.");
+        return;
+      }
       setOfflineStatus(data);
       setOfflineMessage("Offline Bible status loaded.");
     } catch (error) {
@@ -306,10 +333,23 @@ export function SpiritualPage() {
       );
       const data = await response.json().catch(() => ({}));
       if (response.status === 202 || data?.queued) {
-        setOfflineMessage(data.detail ?? "LULU is still syncing Bible files.");
+        try {
+          const local = await loadDirectBibleItems(path);
+          setBiblePath(local.path);
+          setBibleFiles(local.items);
+          setOfflineMessage("Bible files loaded from local LULU SD.");
+        } catch {
+          setOfflineMessage(data.detail ?? "LULU is still syncing Bible files.");
+        }
         return;
       }
-      if (!response.ok) throw new Error(data.detail ?? "Bible files unavailable");
+      if (!response.ok) {
+        const local = await loadDirectBibleItems(path);
+        setBiblePath(local.path);
+        setBibleFiles(local.items);
+        setOfflineMessage("Bible files loaded from local LULU SD.");
+        return;
+      }
       setBiblePath(String(data.path ?? path).replace(/^\//, ""));
       setBibleFiles(Array.isArray(data.items) ? data.items : []);
       setOfflineMessage("Bible files loaded from LULU SD.");
@@ -387,8 +427,8 @@ export function SpiritualPage() {
       { cache: "no-store" }
     );
     const data = await response.json().catch(() => ({}));
-    if (response.status === 202 || data?.queued) throw new Error(data.detail ?? `LULU is still syncing /${path}`);
-    if (!response.ok) throw new Error(data.detail ?? `Could not check /${path} on LULU SD`);
+    if (response.status === 202 || data?.queued) return (await loadDirectBibleItems(path)).items;
+    if (!response.ok) return (await loadDirectBibleItems(path)).items;
     return Array.isArray(data.items) ? data.items as BibleSdItem[] : [];
   }
 

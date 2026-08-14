@@ -113,22 +113,45 @@ export function SdMediaManager({ title, subtitle, rootPath, accept, emptyText, i
     return params;
   }
 
+  async function loadDirectLocalItems(path = currentPath) {
+    const localPath = `/${cleanPath(path)}`;
+    const response = await fetch(`${directStorageUrl()}/list?dir=${encodeURIComponent(localPath)}`, { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail ?? "Local LULU SD is not reachable from this browser");
+    return {
+      path: cleanPath(String(data.path ?? path)),
+      items: Array.isArray(data.items) ? data.items as SdMediaItem[] : []
+    };
+  }
+
+  function applyListing(path: string, nextItems: SdMediaItem[], sourceLabel: string) {
+    const nextPath = cleanPath(path);
+    setCurrentPath(nextPath);
+    setItems(nextItems);
+    writeCachedListing(mode, nextPath, nextItems);
+    setStatus(`${title} files loaded from ${sourceLabel}.`);
+  }
+
   async function loadItems(path = currentPath, options: { quiet?: boolean } = {}) {
     if (!options.quiet) setLoading(true);
     try {
       const response = await fetch(`/api/lulu/sd?${sdQueryParams(path).toString()}`, { cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (response.status === 202 || data?.queued) {
-        setStatus(data.detail ?? "LULU is still syncing SD files.");
+        try {
+          const local = await loadDirectLocalItems(path);
+          applyListing(local.path, local.items, "local SD");
+        } catch {
+          setStatus(data.detail ?? "LULU is still syncing SD files.");
+        }
         return;
       }
-      if (!response.ok) throw new Error(data.detail ?? "Could not load SD files");
-      const nextItems = Array.isArray(data.items) ? data.items : [];
-      const nextPath = cleanPath(String(data.path ?? path));
-      setCurrentPath(nextPath);
-      setItems(nextItems);
-      writeCachedListing(mode, nextPath, nextItems);
-      setStatus(`${title} files loaded from ${mode === "cloud" ? "cloud relay" : "local SD"}.`);
+      if (!response.ok) {
+        const local = await loadDirectLocalItems(path);
+        applyListing(local.path, local.items, "local SD");
+        return;
+      }
+      applyListing(String(data.path ?? path), Array.isArray(data.items) ? data.items : [], mode === "cloud" ? "cloud relay" : "local SD");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Could not load SD files");
     } finally {
