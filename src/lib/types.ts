@@ -22,6 +22,19 @@ export type Reminder = {
   message: string;
   scheduleTime: string;
   status: "scheduled" | "paused" | "completed";
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ReminderHistoryItem = {
+  id: string;
+  reminderId: string;
+  action: "created" | "updated" | "deleted" | string;
+  title: string;
+  message: string;
+  scheduleTime: string;
+  status: string;
+  timestamp: string;
 };
 
 export type MemoryItem = {

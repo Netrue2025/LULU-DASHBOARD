@@ -12,6 +12,7 @@ import {
   Menu,
   Moon,
   Music,
+  BellRing,
   Search,
   Shield,
   Sun,
@@ -27,6 +28,7 @@ const navItems = [
   { href: "/", label: "Overview", icon: Home },
   { href: "/spiritual", label: "Spiritual", icon: BookOpen },
   { href: "/music", label: "Music", icon: Music },
+  { href: "/reminders", label: "Reminders", icon: BellRing },
   { href: "/stories", label: "Stories", icon: BookOpenText }
 ];
 
