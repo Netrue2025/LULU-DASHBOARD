@@ -12,6 +12,7 @@ type ReminderPayload = {
   reminders: Reminder[];
   history: ReminderHistoryItem[];
   upcoming: Reminder[];
+  cache?: Reminder[];
   detail?: string;
 };
 
@@ -22,6 +23,7 @@ type Draft = {
 };
 
 const emptyDraft: Draft = { title: "", message: "", scheduleTime: "" };
+const REMINDER_CACHE_KEY = "lulu-reminder-payload-cache";
 
 export function ReminderManager({ compact = false }: { compact?: boolean }) {
   const [items, setItems] = useState<Reminder[]>([]);
@@ -37,6 +39,8 @@ export function ReminderManager({ compact = false }: { compact?: boolean }) {
   );
 
   useEffect(() => {
+    const cached = loadCachedPayload();
+    if (cached) applyPayload(cached, false);
     void loadReminders();
   }, []);
 
@@ -49,15 +53,22 @@ export function ReminderManager({ compact = false }: { compact?: boolean }) {
       applyPayload(data);
       setStatus("");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Could not load reminders");
+      const cached = loadCachedPayload();
+      if (cached) {
+        applyPayload(cached, false);
+        setStatus("Showing cached reminders. Backend refresh failed.");
+      } else {
+        setStatus(error instanceof Error ? error.message : "Could not load reminders");
+      }
     } finally {
       setBusy(false);
     }
   }
 
-  function applyPayload(data: ReminderPayload) {
+  function applyPayload(data: ReminderPayload, writeCache = true) {
     setItems(Array.isArray(data.reminders) ? data.reminders : []);
     setHistory(Array.isArray(data.history) ? data.history : []);
+    if (writeCache) saveCachedPayload(data);
   }
 
   async function submitReminder() {
@@ -339,4 +350,27 @@ function toDatetimeLocal(value: string) {
   if (Number.isNaN(date.getTime())) return "";
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+function loadCachedPayload(): ReminderPayload | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REMINDER_CACHE_KEY) ?? "null");
+    if (!parsed || !Array.isArray(parsed.reminders) || !Array.isArray(parsed.history)) return null;
+    return parsed as ReminderPayload;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedPayload(data: ReminderPayload) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    REMINDER_CACHE_KEY,
+    JSON.stringify({
+      reminders: Array.isArray(data.reminders) ? data.reminders : [],
+      history: Array.isArray(data.history) ? data.history : [],
+      upcoming: Array.isArray(data.upcoming) ? data.upcoming : []
+    })
+  );
 }
