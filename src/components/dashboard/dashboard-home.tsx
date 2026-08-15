@@ -4,7 +4,6 @@ import { Activity, Clock, Lock, Mic, PlugZap, RadioTower, Search, Sparkles, Squa
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
-import { ReminderManager } from "@/components/dashboard/reminder-manager";
 import { HealthIcon, PageGrid, StatusBadge } from "@/components/dashboard/shared";
 import { Button } from "@/components/ui/button";
 import { initialAlerts } from "@/lib/mock-data";
@@ -193,8 +192,6 @@ export function DashboardHome() {
             </aside>
           </div>
         </section>
-
-        <ReminderManager compact />
       </PageGrid>
 
       {connectionOpen ? <ConnectionModal onClose={() => setConnectionOpen(false)} /> : null}
