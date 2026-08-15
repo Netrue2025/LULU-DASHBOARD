@@ -5,12 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BookOpen,
+  BookOpenText,
   Cpu,
   Home,
   LogOut,
   Menu,
   Moon,
   Music,
+  BellRing,
   Search,
   Shield,
   Sun,
@@ -25,7 +27,9 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { href: "/", label: "Overview", icon: Home },
   { href: "/spiritual", label: "Spiritual", icon: BookOpen },
-  { href: "/music", label: "Music", icon: Music }
+  { href: "/music", label: "Music", icon: Music },
+  { href: "/reminders", label: "Reminders", icon: BellRing },
+  { href: "/stories", label: "Stories", icon: BookOpenText }
 ];
 
 export function DashboardShell({
@@ -41,6 +45,7 @@ export function DashboardShell({
   unreadAlerts?: number;
   minimal?: boolean;
 }) {
+  const [hydrated, setHydrated] = useState(false);
   const [authed, setAuthed] = useState(false);
   const [role, setRole] = useState("Admin");
   const [mobileNav, setMobileNav] = useState(false);
@@ -55,6 +60,7 @@ export function DashboardShell({
     setRole(storedRole);
     setDark(storedTheme === "dark");
     document.documentElement.classList.toggle("dark", storedTheme === "dark");
+    setHydrated(true);
   }, []);
 
   function login(nextRole: string) {
@@ -74,6 +80,10 @@ export function DashboardShell({
     setDark(next);
     document.documentElement.classList.toggle("dark", next);
     window.localStorage.setItem("lulu-dashboard-theme", next ? "dark" : "light");
+  }
+
+  if (!hydrated) {
+    return <div className="min-h-screen bg-background" />;
   }
 
   if (!authed) {
@@ -185,6 +195,7 @@ function SidebarContent({
             <Link
               key={item.href}
               href={item.href}
+              prefetch
               onClick={onNavigate}
               className={cn(
                 "mb-1 flex h-10 items-center gap-3 rounded-md px-3 text-sm transition",

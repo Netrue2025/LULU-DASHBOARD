@@ -4,6 +4,7 @@ import { Activity, Clock, Lock, Mic, PlugZap, RadioTower, Search, Sparkles, Squa
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { ReminderManager } from "@/components/dashboard/reminder-manager";
 import { HealthIcon, PageGrid, StatusBadge } from "@/components/dashboard/shared";
 import { Button } from "@/components/ui/button";
 import { initialAlerts } from "@/lib/mock-data";
@@ -29,6 +30,11 @@ type ConnectionState = {
       wifi_ssid?: string;
       wifi_ip?: string;
       wifi_rssi?: number;
+      free_heap?: number;
+      sd_ready?: boolean;
+      sd_used_bytes?: number;
+      sd_total_bytes?: number;
+      sd_free_bytes?: number;
       updated_at?: string;
       state?: string;
     } | null;
@@ -63,7 +69,12 @@ const defaultWifiConfig: WifiConfig = {
 };
 
 export function DashboardHome() {
-  const { health, overview, events, status } = useLuluRealtime();
+  const { health, overview, events, status } = useLuluRealtime({
+    pollOverview: true,
+    overviewIntervalMs: 5000,
+    overviewCacheMs: 900,
+    healthCacheMs: 30000
+  });
   const [remoteStatus, setRemoteStatus] = useState("");
   const [sendingRemote, setSendingRemote] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
@@ -182,6 +193,8 @@ export function DashboardHome() {
             </aside>
           </div>
         </section>
+
+        <ReminderManager compact />
       </PageGrid>
 
       {connectionOpen ? <ConnectionModal onClose={() => setConnectionOpen(false)} /> : null}
@@ -237,8 +250,6 @@ function ConnectionModal({ onClose }: { onClose: () => void }) {
 
     void loadConnection();
     void loadWifiStatus(nextConfig.deviceIp);
-    const connectionTimer = window.setInterval(loadConnection, 5000);
-    return () => window.clearInterval(connectionTimer);
   }, []);
 
   function updateWifiConfig(next: WifiConfig) {
