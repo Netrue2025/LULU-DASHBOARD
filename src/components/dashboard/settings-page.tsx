@@ -141,16 +141,22 @@ export function SettingsPage() {
   }
 
   async function saveTtsSettings() {
+    const previewAudio = new Audio();
     const response = await fetch("/api/lulu/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "config", config: ttsConfig })
     });
-    setTtsStatus(response.ok ? "Voice settings saved" : "Could not save voice settings");
-    if (response.ok) await loadTtsSettings();
+    if (!response.ok) {
+      setTtsStatus("Could not save voice settings");
+      return;
+    }
+    setTtsStatus("Voice settings saved. Generating preview...");
+    await loadTtsSettings();
+    await previewVoice("conversation", previewAudio);
   }
 
-  async function previewVoice(mode: "conversation" | "story" | "education") {
+  async function previewVoice(mode: "conversation" | "story" | "education", audioPlayer?: HTMLAudioElement) {
     setPreviewing(true);
     setTtsStatus("Generating preview");
     try {
@@ -164,9 +170,15 @@ export function SettingsPage() {
         setTtsStatus(data.detail ?? "Preview failed");
         return;
       }
-      new Audio(data.audio_url).play();
-      setTtsStatus(`Preview ready: ${data.provider}${data.cache_hit ? " cache" : ""}`);
+      const audioUrl = `${data.audio_url}${String(data.audio_url).includes("?") ? "&" : "?"}preview=${Date.now()}`;
+      const player = audioPlayer ?? new Audio();
+      player.src = audioUrl;
+      await player.play();
+      const fallback = data.fallback_used ? " using fallback" : "";
+      setTtsStatus(`Preview ready: ${data.provider}${fallback}${data.cache_hit ? " cache" : ""}`);
       await loadTtsSettings();
+    } catch (error) {
+      setTtsStatus(error instanceof Error ? `Preview failed: ${error.message}` : "Preview failed");
     } finally {
       setPreviewing(false);
     }
