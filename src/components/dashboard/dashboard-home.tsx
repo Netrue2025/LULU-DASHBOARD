@@ -1,9 +1,10 @@
 "use client";
 
-import { Activity, Clock, Lock, Mic, PlugZap, RadioTower, Search, Sparkles, Square, Wifi, X } from "lucide-react";
+import { Activity, Clock, Lock, MessageCircle, Mic, PlugZap, RadioTower, Search, Sparkles, Square, Wifi, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { MessageModal } from "@/components/dashboard/message-modal";
 import { HealthIcon, PageGrid, StatusBadge } from "@/components/dashboard/shared";
 import { Button } from "@/components/ui/button";
 import { initialAlerts } from "@/lib/mock-data";
@@ -77,7 +78,9 @@ export function DashboardHome() {
   const [remoteStatus, setRemoteStatus] = useState("");
   const [sendingRemote, setSendingRemote] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [messagesOpen, setMessagesOpen] = useState(false);
   const unreadAlerts = initialAlerts.filter((alert) => alert.unread).length + (status === "offline" || status === "error" ? 1 : 0);
+  const unreadMessages = overview?.messages?.unreadCount ?? 0;
 
   const userPhrase = overview?.conversation.user?.text ?? "Waiting for Jeremiah...";
   const assistantResponse = overview?.conversation.lulu?.text ?? "LULU is ready.";
@@ -128,6 +131,19 @@ export function DashboardHome() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    className="relative flex h-9 w-9 items-center justify-center rounded-md border border-pink-300/50 bg-pink-300/20 text-pink-100 transition hover:bg-pink-300/30"
+                    onClick={() => setMessagesOpen(true)}
+                    title="Messages"
+                    type="button"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    {unreadMessages > 0 ? (
+                      <span className="absolute -right-1 -top-1 flex h-4 min-w-4 animate-pulse items-center justify-center rounded-full bg-yellow-300 px-1 text-[10px] font-bold text-slate-950">
+                        {unreadMessages}
+                      </span>
+                    ) : null}
+                  </button>
                   <button
                     className={cn(
                       "relative flex h-9 w-9 items-center justify-center rounded-md border transition",
@@ -195,6 +211,7 @@ export function DashboardHome() {
       </PageGrid>
 
       {connectionOpen ? <ConnectionModal onClose={() => setConnectionOpen(false)} /> : null}
+      <MessageModal initialMessages={overview?.messages} onClose={() => setMessagesOpen(false)} open={messagesOpen} />
     </DashboardShell>
   );
 }

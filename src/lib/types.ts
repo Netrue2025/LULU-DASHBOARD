@@ -37,6 +37,19 @@ export type ReminderHistoryItem = {
   timestamp: string;
 };
 
+export type LuluMessage = {
+  id: string;
+  sender: string;
+  message: string;
+  sendAt: string;
+  status: "scheduled" | "pending" | "delivered" | "read" | string;
+  source?: "dashboard" | "public" | string;
+  createdAt?: string;
+  updatedAt?: string;
+  deliveredAt?: string;
+  readAt?: string;
+};
+
 export type MemoryItem = {
   id: string;
   category: string;
@@ -130,4 +143,12 @@ export type LuluOverview = {
     updated_at?: string;
     state?: string;
   } | null;
+  messages?: {
+    messages: LuluMessage[];
+    pending: LuluMessage[];
+    scheduled: LuluMessage[];
+    unread: LuluMessage[];
+    unreadCount: number;
+    pendingCount: number;
+  };
 };
