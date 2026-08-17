@@ -23,6 +23,7 @@ type TtsVoice = {
   voice_id: string;
   display_name: string;
   category?: string;
+  labels?: Record<string, string>;
 };
 
 type TtsConfig = {
@@ -44,8 +45,8 @@ type TtsCache = {
 };
 
 const defaultTtsConfig: TtsConfig = {
-  provider: "elevenlabs",
-  defaultVoice: "talia",
+  provider: "piper",
+  defaultVoice: "en_US-amy-medium",
   fallback: "piper",
   cacheEnabled: false,
   cacheFolder: "cache/tts_cache",
@@ -53,18 +54,25 @@ const defaultTtsConfig: TtsConfig = {
   voiceSpeed: 1,
   pitchSemitones: 0,
   voices: {
-    conversation: { voice_id: "talia", display_name: "Talia" },
-    story: { voice_id: "florence", display_name: "Florence" },
-    education: { voice_id: "eddie", display_name: "Eddie" }
+    conversation: { voice_id: "en_US-amy-medium", display_name: "Amy - Soft American" },
+    story: { voice_id: "en_GB-alba-medium", display_name: "Alba - Soft British" },
+    education: { voice_id: "en_US-lessac-medium", display_name: "Lessac - Clear American" }
   }
 };
-const preferredVoiceNames = ["Talia", "Florence", "Eddie"];
+const preferredPiperVoiceIds = [
+  "en_US-amy-medium",
+  "en_US-lessac-medium",
+  "en_GB-alba-medium",
+  "en_GB-southern_english_female-low",
+  "en_US-kathleen-low"
+];
 
 export function SettingsPage() {
   const [settings, setSettings] = useState(defaults);
   const [saved, setSaved] = useState(false);
   const [ttsConfig, setTtsConfig] = useState<TtsConfig>(defaultTtsConfig);
   const [voices, setVoices] = useState<TtsVoice[]>([]);
+  const [piperVoices, setPiperVoices] = useState<TtsVoice[]>([]);
   const [ttsCache, setTtsCache] = useState<TtsCache>({ file_count: 0, storage_used: 0, files: [] });
   const [ttsStatus, setTtsStatus] = useState("");
   const [previewing, setPreviewing] = useState(false);
@@ -88,12 +96,16 @@ export function SettingsPage() {
     ]);
 
     if (configResponse.ok) setTtsConfig({ ...defaultTtsConfig, ...(await configResponse.json()) });
-    if (voicesResponse.ok) setVoices(uniqueVoices((await voicesResponse.json()).voices ?? []));
+    if (voicesResponse.ok) {
+      const voicePayload = await voicesResponse.json();
+      setVoices(uniqueVoices(voicePayload.voices ?? []));
+      setPiperVoices(uniqueVoices(voicePayload.piper_voices ?? []));
+    }
     if (cacheResponse.ok) setTtsCache(await cacheResponse.json());
   }
 
   function setModeVoice(mode: "conversation" | "story" | "education", voiceId: string) {
-    const voice = voices.find((item) => item.voice_id === voiceId);
+    const voice = activeVoices.find((item) => item.voice_id === voiceId) ?? voices.find((item) => item.voice_id === voiceId);
     setTtsConfig({
       ...ttsConfig,
       voices: {
@@ -106,38 +118,64 @@ export function SettingsPage() {
     });
   }
 
-  function usePreferredVoice(displayName: string) {
-    const voice = voices.find((item) => item.display_name.toLowerCase() === displayName.toLowerCase());
+  function setProvider(provider: string) {
+    if (provider === "piper") {
+      const mainVoice = piperVoices.find((item) => item.voice_id === "en_US-amy-medium") ?? piperVoices[0];
+      setTtsConfig({
+        ...ttsConfig,
+        provider,
+        defaultVoice: mainVoice?.voice_id ?? "en_US-amy-medium",
+        voices: {
+          conversation: {
+            voice_id: mainVoice?.voice_id ?? "en_US-amy-medium",
+            display_name: mainVoice?.display_name ?? "Amy - Soft American"
+          },
+          story: ttsConfig.voices.story?.voice_id?.startsWith("en_")
+            ? ttsConfig.voices.story
+            : { voice_id: "en_GB-alba-medium", display_name: "Alba - Soft British" },
+          education: ttsConfig.voices.education?.voice_id?.startsWith("en_")
+            ? ttsConfig.voices.education
+            : { voice_id: "en_US-lessac-medium", display_name: "Lessac - Clear American" }
+        }
+      });
+      return;
+    }
+    setTtsConfig({ ...ttsConfig, provider });
+  }
+
+  function usePreferredPiperVoice(voiceId: string) {
+    const voice = piperVoices.find((item) => item.voice_id === voiceId);
     setTtsConfig({
       ...ttsConfig,
-      provider: "elevenlabs",
+      provider: "piper",
+      defaultVoice: voiceId,
       voices: {
         ...ttsConfig.voices,
         conversation: {
-          voice_id: voice?.voice_id ?? displayName.toLowerCase(),
-          display_name: voice?.display_name ?? displayName
+          voice_id: voice?.voice_id ?? voiceId,
+          display_name: voice?.display_name ?? voiceId
         }
       }
     });
-    setTtsStatus(voice ? `${voice.display_name} selected for conversation` : `${displayName} not found in ElevenLabs voices yet`);
+    setTtsStatus(voice ? `${voice.display_name} selected for Piper` : `${voiceId} selected for Piper`);
   }
 
-  function usePreferredVoiceSet() {
+  function usePreferredPiperSet() {
     const nextVoices = { ...ttsConfig.voices };
     const mapping: Array<["conversation" | "story" | "education", string]> = [
-      ["conversation", "Talia"],
-      ["story", "Florence"],
-      ["education", "Eddie"]
+      ["conversation", "en_US-amy-medium"],
+      ["story", "en_GB-alba-medium"],
+      ["education", "en_US-lessac-medium"]
     ];
-    for (const [mode, displayName] of mapping) {
-      const voice = voices.find((item) => item.display_name.toLowerCase() === displayName.toLowerCase());
+    for (const [mode, voiceId] of mapping) {
+      const voice = piperVoices.find((item) => item.voice_id === voiceId);
       nextVoices[mode] = {
-        voice_id: voice?.voice_id ?? displayName.toLowerCase(),
-        display_name: voice?.display_name ?? displayName
+        voice_id: voice?.voice_id ?? voiceId,
+        display_name: voice?.display_name ?? voiceId
       };
     }
-    setTtsConfig({ ...ttsConfig, provider: "elevenlabs", voices: nextVoices });
-    setTtsStatus("Preferred ElevenLabs voice set selected");
+    setTtsConfig({ ...ttsConfig, provider: "piper", defaultVoice: "en_US-amy-medium", voices: nextVoices });
+    setTtsStatus("Soft Piper voice set selected");
   }
 
   async function saveTtsSettings() {
@@ -183,6 +221,10 @@ export function SettingsPage() {
       setPreviewing(false);
     }
   }
+
+  const activeVoices = ttsConfig.provider === "piper"
+    ? (piperVoices.length ? piperVoices : uniqueVoices(voices.filter((voice) => voice.category === "local_piper")))
+    : uniqueVoices(voices.filter((voice) => voice.category !== "local_piper"));
 
   async function clearTtsCache() {
     const response = await fetch("/api/lulu/tts", { method: "DELETE" });
@@ -236,17 +278,17 @@ export function SettingsPage() {
           action={<Button variant="secondary" onClick={loadTtsSettings}><RefreshCw className="h-4 w-4" />Refresh</Button>}
         >
           <div className="grid gap-3 md:grid-cols-2">
-            <Select value={ttsConfig.provider} onChange={(event) => setTtsConfig({ ...ttsConfig, provider: event.target.value })}>
+            <Select value={ttsConfig.provider} onChange={(event) => setProvider(event.target.value)}>
+              <option value="piper">Piper Local Voice</option>
               <option value="elevenlabs">ElevenLabs</option>
-              <option value="piper">Piper</option>
             </Select>
             <Select value={ttsConfig.cacheEnabled ? "1" : "0"} onChange={(event) => setTtsConfig({ ...ttsConfig, cacheEnabled: event.target.value === "1" })}>
               <option value="1">Cache Enabled</option>
               <option value="0">Cache Disabled</option>
             </Select>
-            <VoiceSelect label="LULU Main Voice" mode="conversation" voices={voices} value={ttsConfig.voices.conversation?.voice_id ?? ""} onChange={setModeVoice} />
-            <VoiceSelect label="Story Voice" mode="story" voices={voices} value={ttsConfig.voices.story?.voice_id ?? ""} onChange={setModeVoice} />
-            <VoiceSelect label="Education Voice" mode="education" voices={voices} value={ttsConfig.voices.education?.voice_id ?? ""} onChange={setModeVoice} />
+            <VoiceSelect label="LULU Main Voice" mode="conversation" voices={activeVoices} value={ttsConfig.voices.conversation?.voice_id ?? ""} onChange={setModeVoice} />
+            <VoiceSelect label="Story Voice" mode="story" voices={activeVoices} value={ttsConfig.voices.story?.voice_id ?? ""} onChange={setModeVoice} />
+            <VoiceSelect label="Education Voice" mode="education" voices={activeVoices} value={ttsConfig.voices.education?.voice_id ?? ""} onChange={setModeVoice} />
             <Input placeholder="Cache folder" value={ttsConfig.cacheFolder} onChange={(event) => setTtsConfig({ ...ttsConfig, cacheFolder: event.target.value })} />
             <Input
               type="number"
@@ -254,6 +296,7 @@ export function SettingsPage() {
               max="12"
               step="1"
               placeholder="ElevenLabs gain dB"
+              disabled={ttsConfig.provider !== "elevenlabs"}
               value={ttsConfig.elevenlabsGainDb}
               onChange={(event) => setTtsConfig({ ...ttsConfig, elevenlabsGainDb: Number(event.target.value) })}
             />
@@ -277,11 +320,11 @@ export function SettingsPage() {
             />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
-            {preferredVoiceNames.map((name) => {
-              const available = voices.some((voice) => voice.display_name.toLowerCase() === name.toLowerCase());
+            {preferredPiperVoiceIds.map((voiceId) => {
+              const voice = piperVoices.find((item) => item.voice_id === voiceId);
               return (
-                <Button key={name} variant={available ? "secondary" : "ghost"} onClick={() => usePreferredVoice(name)}>
-                  {name}
+                <Button key={voiceId} variant={voice ? "secondary" : "ghost"} onClick={() => usePreferredPiperVoice(voiceId)}>
+                  {voice?.display_name ?? voiceId}
                 </Button>
               );
             })}
@@ -289,7 +332,7 @@ export function SettingsPage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={saveTtsSettings}><Save className="h-4 w-4" />Save Voice Settings</Button>
             <Button variant="secondary" disabled={previewing} onClick={() => previewVoice("conversation")}><Play className="h-4 w-4" />Preview</Button>
-            <Button variant="secondary" onClick={usePreferredVoiceSet}>Use Preferred Set</Button>
+            <Button variant="secondary" onClick={usePreferredPiperSet}>Use Soft Piper Set</Button>
             <Button variant="secondary" disabled={previewing} onClick={preloadTtsCache}><Volume2 className="h-4 w-4" />Preload Phrases</Button>
           </div>
           {ttsStatus ? <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{ttsStatus}</p> : null}
