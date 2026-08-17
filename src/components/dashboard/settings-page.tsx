@@ -32,6 +32,8 @@ type TtsConfig = {
   cacheEnabled: boolean;
   cacheFolder: string;
   elevenlabsGainDb: number;
+  voiceSpeed: number;
+  pitchSemitones: number;
   voices: Record<string, { voice_id: string; display_name: string }>;
 };
 
@@ -48,6 +50,8 @@ const defaultTtsConfig: TtsConfig = {
   cacheEnabled: false,
   cacheFolder: "cache/tts_cache",
   elevenlabsGainDb: 12,
+  voiceSpeed: 1,
+  pitchSemitones: 0,
   voices: {
     conversation: { voice_id: "talia", display_name: "Talia" },
     story: { voice_id: "florence", display_name: "Florence" },
@@ -228,7 +232,7 @@ export function SettingsPage() {
               <option value="1">Cache Enabled</option>
               <option value="0">Cache Disabled</option>
             </Select>
-            <VoiceSelect label="Conversation Voice" mode="conversation" voices={voices} value={ttsConfig.voices.conversation?.voice_id ?? ""} onChange={setModeVoice} />
+            <VoiceSelect label="LULU Main Voice" mode="conversation" voices={voices} value={ttsConfig.voices.conversation?.voice_id ?? ""} onChange={setModeVoice} />
             <VoiceSelect label="Story Voice" mode="story" voices={voices} value={ttsConfig.voices.story?.voice_id ?? ""} onChange={setModeVoice} />
             <VoiceSelect label="Education Voice" mode="education" voices={voices} value={ttsConfig.voices.education?.voice_id ?? ""} onChange={setModeVoice} />
             <Input placeholder="Cache folder" value={ttsConfig.cacheFolder} onChange={(event) => setTtsConfig({ ...ttsConfig, cacheFolder: event.target.value })} />
@@ -240,6 +244,24 @@ export function SettingsPage() {
               placeholder="ElevenLabs gain dB"
               value={ttsConfig.elevenlabsGainDb}
               onChange={(event) => setTtsConfig({ ...ttsConfig, elevenlabsGainDb: Number(event.target.value) })}
+            />
+            <RangeSetting
+              label="Voice Speed"
+              value={ttsConfig.voiceSpeed}
+              min={0.7}
+              max={1.4}
+              step={0.05}
+              display={`${ttsConfig.voiceSpeed.toFixed(2)}x`}
+              onChange={(voiceSpeed) => setTtsConfig({ ...ttsConfig, voiceSpeed })}
+            />
+            <RangeSetting
+              label="Pitch"
+              value={ttsConfig.pitchSemitones}
+              min={-6}
+              max={6}
+              step={0.5}
+              display={`${ttsConfig.pitchSemitones > 0 ? "+" : ""}${ttsConfig.pitchSemitones.toFixed(1)} st`}
+              onChange={(pitchSemitones) => setTtsConfig({ ...ttsConfig, pitchSemitones })}
             />
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
@@ -311,6 +333,42 @@ function VoiceSelect({
           <option key={`${voice.voice_id}-${index}`} value={voice.voice_id}>{voice.display_name || voice.voice_id}</option>
         )) : <option value={value}>{value || "Configured voice"}</option>}
       </Select>
+    </label>
+  );
+}
+
+function RangeSetting({
+  label,
+  value,
+  min,
+  max,
+  step,
+  display,
+  onChange
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  display: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="space-y-2 rounded-md border bg-background/50 p-3 text-sm">
+      <span className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span>{label}</span>
+        <span className="font-medium text-foreground">{display}</span>
+      </span>
+      <input
+        className="h-2 w-full accent-primary"
+        max={max}
+        min={min}
+        onChange={(event) => onChange(Number(event.target.value))}
+        step={step}
+        type="range"
+        value={value}
+      />
     </label>
   );
 }

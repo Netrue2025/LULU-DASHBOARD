@@ -14,6 +14,7 @@ import {
   Music,
   BellRing,
   Search,
+  Settings,
   Shield,
   Sun,
   X
@@ -29,7 +30,8 @@ const navItems = [
   { href: "/spiritual", label: "Spiritual", icon: BookOpen },
   { href: "/music", label: "Music", icon: Music },
   { href: "/reminders", label: "Reminders", icon: BellRing },
-  { href: "/stories", label: "Stories", icon: BookOpenText }
+  { href: "/stories", label: "Stories", icon: BookOpenText },
+  { href: "/settings", label: "Settings", icon: Settings }
 ];
 
 export function DashboardShell({
