@@ -163,18 +163,18 @@ export function SettingsPage() {
       const response = await fetch("/api/lulu/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "speak", text: "Hello, I'm LULU!", mode })
+        body: JSON.stringify({ action: "speak", text: "Hello, I'm LULU!", mode, allowFallback: false })
       });
       const data = await response.json();
       if (!response.ok) {
-        setTtsStatus(data.detail ?? "Preview failed");
+        setTtsStatus(data.detail ?? data.fallback_reason ?? "Preview failed");
         return;
       }
       const audioUrl = `${data.audio_url}${String(data.audio_url).includes("?") ? "&" : "?"}preview=${Date.now()}`;
       const player = audioPlayer ?? new Audio();
       player.src = audioUrl;
       await player.play();
-      const fallback = data.fallback_used ? " using fallback" : "";
+      const fallback = data.fallback_used ? ` using fallback${data.fallback_reason ? `: ${data.fallback_reason}` : ""}` : "";
       setTtsStatus(`Preview ready: ${data.provider}${fallback}${data.cache_hit ? " cache" : ""}`);
       await loadTtsSettings();
     } catch (error) {

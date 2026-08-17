@@ -35,7 +35,11 @@ export async function POST(request: Request) {
     if (action === "speak") {
       return forwardJson("/api/tts/speak", {
         method: "POST",
-        body: JSON.stringify({ text: body.text ?? "", mode: body.mode ?? "conversation" })
+        body: JSON.stringify({
+          text: body.text ?? "",
+          mode: body.mode ?? "conversation",
+          allowFallback: body.allowFallback ?? body.allow_fallback ?? true
+        })
       });
     }
     if (action === "preload") {
