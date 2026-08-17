@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, RefreshCw, Save, Trash2, Volume2 } from "lucide-react";
+import { Download, Play, RefreshCw, Save, Trash2, Volume2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { SectionCard } from "@/components/dashboard/shared";
@@ -55,16 +55,25 @@ const defaultTtsConfig: TtsConfig = {
   pitchSemitones: 0,
   voices: {
     conversation: { voice_id: "en_US-amy-medium", display_name: "Amy - Soft American" },
-    story: { voice_id: "en_GB-alba-medium", display_name: "Alba - Soft British" },
-    education: { voice_id: "en_US-lessac-medium", display_name: "Lessac - Clear American" }
+    story: { voice_id: "en_GB-cori-medium", display_name: "Cori - British Story Mode" },
+    education: { voice_id: "en_GB-jenny_dioco-medium", display_name: "Jenny Dioco - Premium UK LULU" }
   }
 };
 const preferredPiperVoiceIds = [
   "en_US-amy-medium",
+  "en_US-kathleen-low",
+  "en_GB-jenny_dioco-medium",
+  "en_US-libritts_r-medium",
   "en_US-lessac-medium",
+  "en_US-arctic-medium",
+  "en_US-kusal-medium",
+  "en_US-danny-low",
+  "en_US-ryan-medium",
+  "en_GB-cori-medium",
   "en_GB-alba-medium",
-  "en_GB-southern_english_female-low",
-  "en_US-kathleen-low"
+  "en_US-hfc_female-medium",
+  "en_US-hfc_male-medium",
+  "en_US-john-medium"
 ];
 
 export function SettingsPage() {
@@ -132,10 +141,10 @@ export function SettingsPage() {
           },
           story: ttsConfig.voices.story?.voice_id?.startsWith("en_")
             ? ttsConfig.voices.story
-            : { voice_id: "en_GB-alba-medium", display_name: "Alba - Soft British" },
+            : { voice_id: "en_GB-cori-medium", display_name: "Cori - British Story Mode" },
           education: ttsConfig.voices.education?.voice_id?.startsWith("en_")
             ? ttsConfig.voices.education
-            : { voice_id: "en_US-lessac-medium", display_name: "Lessac - Clear American" }
+            : { voice_id: "en_GB-jenny_dioco-medium", display_name: "Jenny Dioco - Premium UK LULU" }
         }
       });
       return;
@@ -164,8 +173,8 @@ export function SettingsPage() {
     const nextVoices = { ...ttsConfig.voices };
     const mapping: Array<["conversation" | "story" | "education", string]> = [
       ["conversation", "en_US-amy-medium"],
-      ["story", "en_GB-alba-medium"],
-      ["education", "en_US-lessac-medium"]
+      ["story", "en_GB-cori-medium"],
+      ["education", "en_GB-jenny_dioco-medium"]
     ];
     for (const [mode, voiceId] of mapping) {
       const voice = piperVoices.find((item) => item.voice_id === voiceId);
@@ -244,6 +253,22 @@ export function SettingsPage() {
     await loadTtsSettings();
   }
 
+  async function installPiperVoices() {
+    setTtsStatus("Installing Piper voices");
+    const response = await fetch("/api/lulu/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "installPiperVoices" })
+    });
+    const data = await response.json();
+    setTtsStatus(
+      response.ok
+        ? `Installed ${data.installed_count ?? 0} Piper voice(s)${data.failed_count ? `, ${data.failed_count} failed` : ""}`
+        : data.detail ?? "Piper voice install failed"
+    );
+    await loadTtsSettings();
+  }
+
   return (
     <DashboardShell title="Settings" subtitle="General, speech, and security controls">
       <div className="grid gap-4 xl:grid-cols-3">
@@ -319,12 +344,21 @@ export function SettingsPage() {
               onChange={(pitchSemitones) => setTtsConfig({ ...ttsConfig, pitchSemitones })}
             />
           </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {preferredPiperVoiceIds.map((voiceId) => {
               const voice = piperVoices.find((item) => item.voice_id === voiceId);
               return (
-                <Button key={voiceId} variant={voice ? "secondary" : "ghost"} onClick={() => usePreferredPiperVoice(voiceId)}>
-                  {voice?.display_name ?? voiceId}
+                <Button
+                  key={voiceId}
+                  className="h-auto min-h-12 justify-start whitespace-normal px-3 py-2 text-left text-xs leading-snug"
+                  title={`${voice?.labels?.recommended_use ?? voiceId} · ${voice?.labels?.suitability ?? ""}`}
+                  variant={voice ? "secondary" : "ghost"}
+                  onClick={() => usePreferredPiperVoice(voiceId)}
+                >
+                  <span className="block">
+                    <span className="block font-medium">{voice?.display_name ?? voiceId}</span>
+                    <span className="block text-[11px] font-normal opacity-70">{voice?.labels?.recommended_use ?? voiceId}</span>
+                  </span>
                 </Button>
               );
             })}
@@ -333,6 +367,7 @@ export function SettingsPage() {
             <Button onClick={saveTtsSettings}><Save className="h-4 w-4" />Save Voice Settings</Button>
             <Button variant="secondary" disabled={previewing} onClick={() => previewVoice("conversation")}><Play className="h-4 w-4" />Preview</Button>
             <Button variant="secondary" onClick={usePreferredPiperSet}>Use Soft Piper Set</Button>
+            <Button variant="secondary" onClick={installPiperVoices}><Download className="h-4 w-4" />Install Piper Voices</Button>
             <Button variant="secondary" disabled={previewing} onClick={preloadTtsCache}><Volume2 className="h-4 w-4" />Preload Phrases</Button>
           </div>
           {ttsStatus ? <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{ttsStatus}</p> : null}

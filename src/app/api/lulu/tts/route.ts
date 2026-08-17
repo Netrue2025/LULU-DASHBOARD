@@ -45,6 +45,9 @@ export async function POST(request: Request) {
     if (action === "preload") {
       return forwardJson("/api/tts/cache/preload", { method: "POST", body: "{}" });
     }
+    if (action === "installPiperVoices") {
+      return forwardJson("/api/tts/piper/install", { method: "POST", body: "{}" });
+    }
     return forwardJson("/api/tts/config", {
       method: "POST",
       body: JSON.stringify(body.config ?? {})
